@@ -1,0 +1,29 @@
+name: Deploy to Pi
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SSH key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PI_SSH_KEY }}
+
+      - name: Rsync to Pi
+        run: |
+          rsync -az --delete \
+            --exclude ".git" \
+            --exclude ".venv" \
+            ./ ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }}:/opt/receipt-printer/
+
+      - name: Restart service
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+            ${{ secrets.PI_USER }}@${{ secrets.PI_HOST }} \
+            "sudo systemctl restart receipt-printer && sudo systemctl status receipt-printer --no-pager"
