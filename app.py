@@ -525,6 +525,21 @@ def _print_via_raster(pil_img: Image.Image, profile: dict[str, Any], media: str)
     explicit_media = str(media or "").strip()
     size_opt_value = explicit_media or _page_size_for_pixels(px_w, px_h, dpi, fallback_media)
     size_opt_name = "media" if explicit_media else "PageSize"
+    target_media = (explicit_media or fallback_media).strip()
+    try:
+        phys_w = px_w / dpi if dpi > 0 else 0
+        phys_h = px_h / dpi if dpi > 0 else 0
+    except Exception:
+        phys_w = 0
+        phys_h = 0
+    print(
+        f"[print-debug] raster_job profile={profile.get('key')} queue={queue} "
+        f"mode={profile.get('print_mode')} px={px_w}x{px_h} "
+        f"page={_page_size_for_pixels(px_w, px_h, dpi, fallback_media)} "
+        f"media={target_media or 'default'} "
+        f"size_opt={size_opt_name}={size_opt_value or 'default'} "
+        f"phys_in={phys_w:.3f}x{phys_h:.3f}"
+    )
     tmp = LOG_DIR / f"_print_{dt.datetime.now().strftime('%Y%m%d%H%M%S%f')}.png"
     try:
         pil_img.save(tmp, format="PNG", dpi=(dpi, dpi))
@@ -548,6 +563,10 @@ def _print_via_raster(pil_img: Image.Image, profile: dict[str, Any], media: str)
             "page-top=0",
             "-o",
             "page-bottom=0",
+            "-o",
+            "zeLabelTop=0",
+            "-o",
+            "zeTearOffPosition=0",
         ]
         attempts: list[tuple[str, list[str], subprocess.CalledProcessError]] = []
         commands: list[tuple[str, list[str]]] = []
@@ -567,7 +586,10 @@ def _print_via_raster(pil_img: Image.Image, profile: dict[str, Any], media: str)
 
         for label, cmd in commands:
             try:
-                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                proc = subprocess.run(cmd, check=True, capture_output=True, text=True)
+                lp_msg = (proc.stdout or proc.stderr or "").strip()
+                if lp_msg:
+                    print(f"[print-debug] lp_response profile={profile.get('key')} {label}: {lp_msg}")
                 return
             except subprocess.CalledProcessError as exc:
                 attempts.append((label, cmd, exc))
