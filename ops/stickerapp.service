@@ -1,0 +1,18 @@
+[Unit]
+Description=Presentation Sticker Scheduler
+After=network.target
+
+[Service]
+User=jamesburgat
+Group=lp
+WorkingDirectory=/opt/stickers2
+EnvironmentFile=-/opt/stickers2/.env
+Environment=PATH=/opt/stickers2/.venv/bin:/usr/local/bin:/usr/bin
+ExecStartPre=/bin/sh -c '/usr/bin/fuser -k 8000/tcp >/dev/null 2>&1 || true'
+ExecStart=/opt/stickers2/.venv/bin/gunicorn --workers 2 --bind 127.0.0.1:8000 app:app
+Restart=always
+RestartSec=2
+KillMode=mixed
+
+[Install]
+WantedBy=multi-user.target

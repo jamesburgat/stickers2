@@ -1,0 +1,58 @@
+name: Deploy stickers2 (self-hosted)
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux]
+
+    env:
+      APP_DIR: /opt/stickers2
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Ensure persistent dirs
+        run: |
+          sudo mkdir -p "$APP_DIR/logs" "$APP_DIR/cache/figma"
+          sudo chown -R jamesburgat:lp "$APP_DIR/logs" "$APP_DIR/cache"
+
+      - name: Sync repo into app dir
+        run: |
+          rsync -az --delete \
+            --exclude '.env' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.venv/' \
+            --exclude 'logs/' \
+            --exclude 'cache/figma/*.png' \
+            ./ "$APP_DIR/"
+
+      - name: Ensure venv and deps
+        run: |
+          cd "$APP_DIR"
+          test -d .venv || python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Install service file
+        run: |
+          sudo cp "$APP_DIR/ops/stickerapp.service" /etc/systemd/system/stickers2.service
+          sudo systemctl daemon-reload
+          sudo systemctl enable stickers2.service
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart stickers2.service
+          sleep 2
+          sudo systemctl --no-pager -l status stickers2.service || true
+
+      - name: Smoke test
+        run: |
+          curl -fsS http://127.0.0.1:8000/tool/health

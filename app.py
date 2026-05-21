@@ -51,13 +51,16 @@ DEFAULT_FONT_PATHS = [
     pathlib.Path("/System/Library/Fonts/Supplemental/Arial Bold.ttf"),
 ]
 ASSET_VERSION = "2026-05-20-presentation"
+BASE_PATH = "/" + str(os.environ.get("BASE_PATH") or "").strip().strip("/")
+if BASE_PATH == "/":
+    BASE_PATH = ""
 
 DEFAULT_PROFILE_KEY = "presentation-transfer"
 DEFAULT_ORANGE_PRESET_KEY = "square-2x2-orange"
 DEFAULT_YELLOW_PRESET_KEY = "square-3x3-yellow"
 COUNTDOWN_TEMPLATE = "{{minutes_left}} Mins left"
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path=(f"{BASE_PATH}/static" if BASE_PATH else "/static"))
 app.secret_key = SECRET_KEY
 
 CONFIG_LOCK = threading.RLock()
@@ -67,6 +70,13 @@ PRINTER_PROFILES: dict[str, dict[str, Any]] = {}
 DEFAULT_PROFILE: dict[str, Any] = {}
 SCHEDULER_STARTED = False
 FONT_CACHE: dict[tuple[str, int], ImageFont.FreeTypeFont] = {}
+
+
+def _public_path(path: str) -> str:
+    normalized = "/" + str(path or "").lstrip("/")
+    if BASE_PATH:
+        return f"{BASE_PATH}{normalized}"
+    return normalized
 
 
 def _now_local() -> dt.datetime:
@@ -934,7 +944,7 @@ def _print_scheduled_job(plan: dict[str, Any], item: dict[str, Any], job: dict[s
         "overlay_text": str(job.get("overlay_text") or ""),
         "preset_key": preset["key"],
         "preset_label": preset["label"],
-        "image_url": f"{PUBLIC_BASE_URL}/logs/{filename}" if PUBLIC_BASE_URL else f"/logs/{filename}",
+        "image_url": f"{PUBLIC_BASE_URL}{_public_path(f'/logs/{filename}')}" if PUBLIC_BASE_URL else _public_path(f"/logs/{filename}"),
         "image_path": str(img_path),
     }
     _append_history(history)
@@ -1099,35 +1109,56 @@ def _require_admin_json():
     return None
 
 
+def route_with_base(rule: str, **options: Any):
+    def decorator(func):
+        target_rule = rule
+        if BASE_PATH:
+            if rule == "/":
+                target_rule = BASE_PATH
+            else:
+                target_rule = f"{BASE_PATH}{rule}"
+        app.route(target_rule, **options)(func)
+        if BASE_PATH and rule == "/":
+            app.route(f"{BASE_PATH}/", **options)(func)
+        return func
+
+    return decorator
+
+
 @app.before_request
 def _boot() -> None:
     _refresh_config_from_disk()
     _start_scheduler_once()
 
 
-@app.get("/")
+@route_with_base("/", methods=["GET"])
 def index():
     return render_template("index.html", state=_dashboard_state(), asset_ver=ASSET_VERSION)
 
 
-@app.get("/api/state")
+@route_with_base("/health", methods=["GET"])
+def health():
+    return jsonify(ok=True, status="healthy", active_plan=_dashboard_state().get("active_plan"))
+
+
+@route_with_base("/api/state", methods=["GET"])
 def api_state():
     return jsonify(ok=True, state=_dashboard_state())
 
 
-@app.get("/logs/<path:fname>")
+@route_with_base("/logs/<path:fname>", methods=["GET"])
 def serve_log_file(fname: str):
     return send_from_directory(LOG_DIR, fname, mimetype="image/png", max_age=3600)
 
 
-@app.get("/admin")
+@route_with_base("/admin", methods=["GET"])
 def admin_page():
     if not ADMIN_ENABLED or not _is_admin_authed():
         return render_template("admin.html", authed=False, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION)
     return render_template("admin.html", authed=True, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION)
 
 
-@app.post("/admin/login")
+@route_with_base("/admin/login", methods=["POST"])
 def admin_login():
     if not ADMIN_ENABLED:
         return redirect(url_for("admin_page"))
@@ -1137,13 +1168,13 @@ def admin_login():
     return redirect(url_for("admin_page"))
 
 
-@app.post("/admin/logout")
+@route_with_base("/admin/logout", methods=["POST"])
 def admin_logout():
     session.pop("admin_authed", None)
     return redirect(url_for("admin_page"))
 
 
-@app.post("/api/admin/settings")
+@route_with_base("/api/admin/settings", methods=["POST"])
 def api_admin_settings():
     auth_error = _require_admin_json()
     if auth_error:
@@ -1165,7 +1196,7 @@ def api_admin_settings():
     return jsonify(ok=True, state=_admin_state())
 
 
-@app.post("/api/admin/figma/refresh")
+@route_with_base("/api/admin/figma/refresh", methods=["POST"])
 def api_admin_figma_refresh():
     auth_error = _require_admin_json()
     if auth_error:
@@ -1185,7 +1216,7 @@ def api_admin_figma_refresh():
     return jsonify(ok=True, frames=frames, state=_admin_state())
 
 
-@app.post("/api/admin/plans/save")
+@route_with_base("/api/admin/plans/save", methods=["POST"])
 def api_admin_plan_save():
     auth_error = _require_admin_json()
     if auth_error:
@@ -1208,7 +1239,7 @@ def api_admin_plan_save():
     return jsonify(ok=True, state=_admin_state(), plan=plan)
 
 
-@app.post("/api/admin/plans/<plan_id>/delete")
+@route_with_base("/api/admin/plans/<plan_id>/delete", methods=["POST"])
 def api_admin_plan_delete(plan_id: str):
     auth_error = _require_admin_json()
     if auth_error:
@@ -1267,7 +1298,7 @@ def _plan_action(config: dict[str, Any], plan_id: str, action: str) -> dict[str,
     return plan
 
 
-@app.post("/api/admin/plans/<plan_id>/<action>")
+@route_with_base("/api/admin/plans/<plan_id>/<action>", methods=["POST"])
 def api_admin_plan_action(plan_id: str, action: str):
     auth_error = _require_admin_json()
     if auth_error:
@@ -1282,7 +1313,7 @@ def api_admin_plan_action(plan_id: str, action: str):
     return jsonify(ok=True, state=_admin_state(), plan=plan)
 
 
-@app.post("/api/admin/plans/<plan_id>/print-now/<item_id>")
+@route_with_base("/api/admin/plans/<plan_id>/print-now/<item_id>", methods=["POST"])
 def api_admin_plan_print_now(plan_id: str, item_id: str):
     auth_error = _require_admin_json()
     if auth_error:
