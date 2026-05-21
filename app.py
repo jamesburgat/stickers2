@@ -528,12 +528,10 @@ def _print_via_raster(pil_img: Image.Image, profile: dict[str, Any], media: str)
     tmp = LOG_DIR / f"_print_{dt.datetime.now().strftime('%Y%m%d%H%M%S%f')}.png"
     try:
         pil_img.save(tmp, format="PNG", dpi=(dpi, dpi))
-        cmd = [
+        base_cmd = [
             "lp",
             "-d",
             queue,
-            "-o",
-            f"{size_opt_name}={size_opt_value}",
             "-o",
             "orientation-requested=3",
             "-o",
@@ -550,9 +548,37 @@ def _print_via_raster(pil_img: Image.Image, profile: dict[str, Any], media: str)
             "page-top=0",
             "-o",
             "page-bottom=0",
-            str(tmp),
         ]
-        subprocess.run(cmd, check=True, capture_output=True, text=True)
+        attempts: list[tuple[str, list[str], subprocess.CalledProcessError]] = []
+        commands: list[tuple[str, list[str]]] = []
+        if size_opt_value:
+            commands.append(
+                (
+                    f"with {size_opt_name}={size_opt_value}",
+                    [
+                        *base_cmd,
+                        "-o",
+                        f"{size_opt_name}={size_opt_value}",
+                        str(tmp),
+                    ],
+                )
+            )
+        commands.append(("without size override", [*base_cmd, str(tmp)]))
+
+        for label, cmd in commands:
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+                return
+            except subprocess.CalledProcessError as exc:
+                attempts.append((label, cmd, exc))
+
+        details = []
+        for label, cmd, exc in attempts:
+            stderr = (exc.stderr or "").strip()
+            stdout = (exc.stdout or "").strip()
+            output = stderr or stdout or "no printer output"
+            details.append(f"{label}: {' '.join(cmd)} -> {output}")
+        raise RuntimeError("Printer command failed; " + " | ".join(details))
     finally:
         try:
             tmp.unlink(missing_ok=True)
