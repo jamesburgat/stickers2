@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Presentation Sticker Scheduler</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ asset_ver }}">
+</head>
+<body class="dashboard-page">
+  <main class="shell">
+    <header class="hero">
+      <div>
+        <p class="eyebrow">Timed Sticker Control</p>
+        <h1>Presentation Sticker Scheduler</h1>
+        <p class="lede">Square transfer stickers, Figma-frame imports, and minute-by-minute countdown prints.</p>
+      </div>
+      <a class="ghost-btn" href="{{ url_for('admin_page') }}">Admin</a>
+    </header>
+
+    <section class="dashboard-grid">
+      <article class="card accent" id="activePlanCard">
+        <div class="section-label">Active Plan</div>
+        <div id="activePlanContent"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-label">Paper Presets</div>
+        <div id="paperPresetContent"></div>
+      </article>
+
+      <article class="card">
+        <div class="section-label">Figma Source</div>
+        <div id="figmaContent"></div>
+      </article>
+
+      <article class="card span-2">
+        <div class="section-label">Recent Prints</div>
+        <div id="recentPrintsContent"></div>
+      </article>
+    </section>
+  </main>
+
+  <script>
+    window.__DASHBOARD_STATE__ = {{ state|tojson }};
+  </script>
+  <script src="{{ url_for('static', filename='dashboard.js') }}?v={{ asset_ver }}"></script>
+</body>
+</html>

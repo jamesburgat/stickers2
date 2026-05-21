@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Presentation Sticker Admin</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ asset_ver }}">
+</head>
+<body class="admin-page">
+  <main class="shell">
+    <header class="hero admin-hero">
+      <div>
+        <p class="eyebrow">Planner + Scheduler</p>
+        <h1>Presentation Sticker Admin</h1>
+        <p class="lede">Build print timelines from Figma frames, arm a plan, and let the printer fire on cue.</p>
+      </div>
+      {% if admin_enabled and authed %}
+        <form method="post" action="{{ url_for('admin_logout') }}">
+          <button class="ghost-btn" type="submit">Log Out</button>
+        </form>
+      {% endif %}
+    </header>
+
+    {% if not admin_enabled %}
+      <section class="card">
+        <div class="section-label">Admin Disabled</div>
+        <p>Set `ADMIN_PASSWORD` in your environment to unlock the planning tools.</p>
+      </section>
+    {% elif not authed %}
+      <section class="card login-card">
+        <div class="section-label">Admin Login</div>
+        <form class="login-form" method="post" action="{{ url_for('admin_login') }}">
+          <label for="password">Password</label>
+          <input id="password" name="password" type="password" autocomplete="current-password">
+          <button type="submit">Unlock</button>
+        </form>
+      </section>
+    {% else %}
+      <section class="admin-grid">
+        <article class="card settings-card">
+          <div class="card-head">
+            <div>
+              <div class="section-label">System Settings</div>
+              <h2>Printer + Figma</h2>
+            </div>
+            <button id="refreshFramesBtn" class="ghost-btn" type="button">Refresh Frames</button>
+          </div>
+          <div class="field-grid">
+            <label>
+              Queue
+              <input id="queueInput" type="text">
+            </label>
+            <label>
+              DPI
+              <input id="dpiInput" type="number" min="1" step="1">
+            </label>
+            <label>
+              Default Paper
+              <select id="activePaperSelect"></select>
+            </label>
+            <label>
+              Figma File Key
+              <input id="figmaFileKeyInput" type="text">
+            </label>
+            <label>
+              Token Env Var
+              <input id="figmaTokenEnvInput" type="text">
+            </label>
+            <label>
+              Export Scale
+              <input id="figmaScaleInput" type="number" min="1" max="4" step="1">
+            </label>
+          </div>
+          <div class="button-row">
+            <button id="saveSettingsBtn" type="button">Save Settings</button>
+          </div>
+          <div id="settingsMessage" class="inline-message"></div>
+        </article>
+
+        <article class="card plan-list-card">
+          <div class="card-head">
+            <div>
+              <div class="section-label">Presentation Plans</div>
+              <h2>Plan Library</h2>
+            </div>
+            <button id="newPlanBtn" class="ghost-btn" type="button">New Plan</button>
+          </div>
+          <div id="planList" class="plan-list"></div>
+        </article>
+
+        <article class="card plan-editor-card">
+          <div class="card-head">
+            <div>
+              <div class="section-label">Editor</div>
+              <h2 id="editorTitle">Plan Editor</h2>
+            </div>
+            <div class="button-row compact">
+              <button id="activatePlanBtn" class="ghost-btn" type="button">Activate</button>
+              <button id="armPlanBtn" class="ghost-btn" type="button">Arm</button>
+              <button id="startPlanBtn" class="ghost-btn" type="button">Start Now</button>
+              <button id="pausePlanBtn" class="ghost-btn" type="button">Pause</button>
+              <button id="resetPlanBtn" class="ghost-btn" type="button">Reset</button>
+              <button id="deletePlanBtn" class="ghost-btn danger" type="button">Delete</button>
+            </div>
+          </div>
+
+          <div class="field-grid plan-meta-grid">
+            <label>
+              Plan Name
+              <input id="planNameInput" type="text">
+            </label>
+            <label>
+              Mode
+              <select id="planModeInput">
+                <option value="relative">Relative to presentation start</option>
+                <option value="absolute">Absolute wall-clock times</option>
+              </select>
+            </label>
+            <label>
+              Scheduled Start
+              <input id="planStartInput" type="datetime-local">
+            </label>
+            <label class="wide">
+              Notes
+              <textarea id="planNotesInput" rows="3"></textarea>
+            </label>
+          </div>
+
+          <div class="builder">
+            <div class="builder-head">
+              <div>
+                <div class="section-label">Sticker Items</div>
+                <h3>Add Or Edit Item</h3>
+              </div>
+              <div class="button-row compact">
+                <button id="clearItemBtn" class="ghost-btn" type="button">Clear</button>
+                <button id="saveItemBtn" type="button">Add Item</button>
+              </div>
+            </div>
+
+            <div class="field-grid">
+              <label>
+                Item Type
+                <select id="itemKindInput">
+                  <option value="frame">Single timed print</option>
+                  <option value="countdown">Minute countdown series</option>
+                </select>
+              </label>
+              <label>
+                Item Name
+                <input id="itemNameInput" type="text">
+              </label>
+              <label>
+                Figma Frame
+                <select id="itemFrameInput"></select>
+              </label>
+              <label>
+                Paper Preset
+                <select id="itemPresetInput"></select>
+              </label>
+              <label>
+                Copies
+                <input id="itemCopiesInput" type="number" min="1" max="10" step="1">
+              </label>
+              <label>
+                Threshold
+                <input id="itemThresholdInput" type="number" min="1" max="255" step="1">
+              </label>
+              <label>
+                Overlay Position
+                <select id="itemOverlayPositionInput">
+                  <option value="top">Top</option>
+                  <option value="center">Center</option>
+                  <option value="bottom">Bottom</option>
+                </select>
+              </label>
+              <label class="wide">
+                Overlay Text
+                <input id="itemOverlayTextInput" type="text" placeholder="Optional static overlay">
+              </label>
+            </div>
+
+            <div id="timingFields" class="field-grid timing-grid">
+              <label class="timing-frame timing-frame-offset">
+                Offset (`m:ss`) or seconds
+                <input id="itemOffsetInput" type="text" placeholder="4:30">
+              </label>
+              <label class="timing-frame timing-frame-absolute">
+                Run At
+                <input id="itemRunAtInput" type="datetime-local">
+              </label>
+              <label class="timing-countdown timing-countdown-offset">
+                First Offset (`m:ss`) or seconds
+                <input id="countdownOffsetInput" type="text" placeholder="0:00">
+              </label>
+              <label class="timing-countdown timing-countdown-absolute">
+                First Run At
+                <input id="countdownRunAtInput" type="datetime-local">
+              </label>
+              <label class="timing-countdown">
+                Start Minutes
+                <input id="countdownStartMinutesInput" type="number" min="0" step="1">
+              </label>
+              <label class="timing-countdown">
+                End Minutes
+                <input id="countdownEndMinutesInput" type="number" min="0" step="1">
+              </label>
+              <label class="timing-countdown">
+                Interval Seconds
+                <input id="countdownIntervalInput" type="number" min="1" step="1">
+              </label>
+              <label class="wide timing-countdown">
+                Countdown Text Template
+                <input id="countdownTemplateInput" type="text" placeholder="{{minutes_left}} Mins left">
+              </label>
+            </div>
+          </div>
+
+          <div class="builder">
+            <div class="builder-head">
+              <div>
+                <div class="section-label">Plan Items</div>
+                <h3>Scheduled Stickers</h3>
+              </div>
+              <button id="savePlanBtn" type="button">Save Plan</button>
+            </div>
+            <div id="planItemsTable" class="items-table"></div>
+            <div id="planMessage" class="inline-message"></div>
+          </div>
+        </article>
+
+        <article class="card recent-card">
+          <div class="section-label">Recent Prints</div>
+          <div id="recentJobs"></div>
+        </article>
+      </section>
+    {% endif %}
+  </main>
+
+  <script>
+    window.__ADMIN_STATE__ = {{ state|tojson }};
+    window.__ADMIN_AUTHED__ = {{ authed|tojson }};
+  </script>
+  {% if authed %}
+    <script src="{{ url_for('static', filename='admin.js') }}?v={{ asset_ver }}"></script>
+  {% endif %}
+</body>
+</html>

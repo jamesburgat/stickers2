@@ -1,0 +1,42 @@
+{
+  "printer_profiles": [
+    {
+      "key": "presentation-transfer",
+      "name": "Presentation Printer",
+      "cups_queue": "Zebra_Transfer_300",
+      "dpi": 300,
+      "print_mode": "thermal_transfer",
+      "enabled": true,
+      "paper_presets": [
+        {
+          "key": "square-2x2-orange",
+          "name": "Orange 2x2",
+          "width_in": 2.0,
+          "height_in": 2.0,
+          "theme_color": "#f26f21",
+          "media": ""
+        },
+        {
+          "key": "square-3x3-yellow",
+          "name": "Yellow 3x3",
+          "width_in": 3.0,
+          "height_in": 3.0,
+          "theme_color": "#f4d63c",
+          "media": ""
+        }
+      ],
+      "active_paper_key": "square-2x2-orange"
+    }
+  ],
+  "active_profile_key": "presentation-transfer",
+  "figma": {
+    "file_key": "",
+    "token_env": "FIGMA_TOKEN",
+    "default_scale": 2,
+    "cached_frames": [],
+    "last_sync_at": "",
+    "last_error": ""
+  },
+  "plans": [],
+  "active_plan_id": ""
+}
