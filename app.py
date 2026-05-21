@@ -185,6 +185,22 @@ def _default_config() -> dict[str, Any]:
         },
         "plans": [],
         "active_plan_id": "",
+        "countdown_timer": _default_timer_state(),
+    }
+
+
+def _default_timer_state() -> dict[str, Any]:
+    return {
+        "status": "idle",
+        "start_at": "",
+        "end_at": "",
+        "preset_key": DEFAULT_ORANGE_PRESET_KEY,
+        "text_template": COUNTDOWN_TEMPLATE,
+        "selected_history_ids": [],
+        "printed_tick_keys": [],
+        "started_at": "",
+        "completed_at": "",
+        "end_printed_at": "",
     }
 
 
@@ -339,6 +355,26 @@ def _normalize_plan(raw: Any) -> dict[str, Any]:
     return plan
 
 
+def _normalize_timer_state(raw: Any) -> dict[str, Any]:
+    timer = _deepcopy(_default_timer_state())
+    if not isinstance(raw, dict):
+        return timer
+    status = str(raw.get("status") or "idle").strip().lower()
+    timer["status"] = status if status in {"idle", "armed", "running", "completed"} else "idle"
+    timer["start_at"] = str(raw.get("start_at") or "").strip()
+    timer["end_at"] = str(raw.get("end_at") or "").strip()
+    timer["preset_key"] = str(raw.get("preset_key") or DEFAULT_ORANGE_PRESET_KEY).strip() or DEFAULT_ORANGE_PRESET_KEY
+    timer["text_template"] = str(raw.get("text_template") or COUNTDOWN_TEMPLATE).strip() or COUNTDOWN_TEMPLATE
+    selected = raw.get("selected_history_ids")
+    timer["selected_history_ids"] = [str(item).strip() for item in selected] if isinstance(selected, list) else []
+    printed = raw.get("printed_tick_keys")
+    timer["printed_tick_keys"] = [str(item).strip() for item in printed] if isinstance(printed, list) else []
+    timer["started_at"] = str(raw.get("started_at") or "").strip()
+    timer["completed_at"] = str(raw.get("completed_at") or "").strip()
+    timer["end_printed_at"] = str(raw.get("end_printed_at") or "").strip()
+    return timer
+
+
 def _normalize_config(raw: Any) -> dict[str, Any]:
     fallback = _default_config()
     if not isinstance(raw, dict):
@@ -365,6 +401,7 @@ def _normalize_config(raw: Any) -> dict[str, Any]:
         "figma": _normalize_figma(raw.get("figma")),
         "plans": normalized_plans,
         "active_plan_id": active_plan_id,
+        "countdown_timer": _normalize_timer_state(raw.get("countdown_timer")),
     }
 
 
@@ -612,12 +649,36 @@ def _to_print_bitmap(image: Image.Image, threshold: int) -> Image.Image:
     return bw.rotate(180, expand=False)
 
 
+def _fit_image_to_label(src: Image.Image, px_w: int, px_h: int) -> Image.Image:
+    return ImageOps.fit(src, (px_w, px_h), method=Image.LANCZOS, centering=(0.5, 0.5))
+
+
+def _build_text_sticker(text: str, px_w: int, px_h: int) -> Image.Image:
+    canvas = Image.new("RGBA", (px_w, px_h), (255, 255, 255, 255))
+    draw = ImageDraw.Draw(canvas)
+    pad = max(16, int(min(px_w, px_h) * 0.08))
+    _draw_outlined_text(draw, (pad, pad, px_w - pad, px_h - pad), text, "center")
+    return _to_print_bitmap(canvas, 200)
+
+
 def _append_history(entry: dict[str, Any]) -> None:
     with HISTORY_LOG.open("a", encoding="utf-8") as handle:
         handle.write(json.dumps(entry, ensure_ascii=True) + "\n")
 
 
-def _recent_history(limit: int = 12) -> list[dict[str, Any]]:
+def _normalize_history_entry(entry: dict[str, Any]) -> dict[str, Any]:
+    normalized = dict(entry)
+    image_path = str(normalized.get("image_path") or "").strip()
+    history_id = str(normalized.get("history_id") or "").strip()
+    if not history_id:
+        history_id = pathlib.Path(image_path).name if image_path else str(normalized.get("timestamp") or _new_id("history"))
+    normalized["history_id"] = history_id
+    if not normalized.get("label"):
+        normalized["label"] = str(normalized.get("overlay_text") or normalized.get("item_name") or normalized.get("plan_name") or normalized.get("kind") or "Sticker")
+    return normalized
+
+
+def _history_entries(limit: int | None = None) -> list[dict[str, Any]]:
     if not HISTORY_LOG.exists():
         return []
     try:
@@ -625,13 +686,25 @@ def _recent_history(limit: int = 12) -> list[dict[str, Any]]:
     except Exception:
         return []
     rows: list[dict[str, Any]] = []
-    for line in lines[-limit:]:
+    source_lines = lines[-limit:] if limit is not None else lines
+    for line in source_lines:
         try:
-            rows.append(json.loads(line))
+            parsed = json.loads(line)
         except Exception:
             continue
+        if isinstance(parsed, dict):
+            rows.append(_normalize_history_entry(parsed))
+    return rows
+
+
+def _recent_history(limit: int = 12) -> list[dict[str, Any]]:
+    rows = _history_entries(limit)
     rows.reverse()
     return rows
+
+
+def _history_map() -> dict[str, dict[str, Any]]:
+    return {entry["history_id"]: entry for entry in _history_entries(None)}
 
 
 def _parse_dt(value: str) -> dt.datetime | None:
@@ -816,6 +889,94 @@ def _plan_is_complete(plan: dict[str, Any]) -> bool:
     return True
 
 
+def _timer_summary(timer: dict[str, Any]) -> dict[str, Any]:
+    summary = _deepcopy(timer)
+    summary["start_at_label"] = _human_schedule(timer.get("start_at") or "")
+    summary["end_at_label"] = _human_schedule(timer.get("end_at") or "")
+    summary["history_count"] = len(timer.get("selected_history_ids") or [])
+    start_at = _parse_dt(timer.get("start_at") or "")
+    end_at = _parse_dt(timer.get("end_at") or "")
+    if start_at and end_at and end_at > start_at:
+        summary["minute_count"] = max(1, math.ceil((end_at - start_at).total_seconds() / 60))
+    else:
+        summary["minute_count"] = 0
+    return summary
+
+
+def _timer_tick_jobs(timer: dict[str, Any], now: dt.datetime) -> list[dict[str, Any]]:
+    start_at = _parse_dt(timer.get("start_at") or "")
+    end_at = _parse_dt(timer.get("end_at") or "")
+    if not start_at or not end_at or end_at <= start_at or now < start_at:
+        return []
+    printed = set(timer.get("printed_tick_keys") or [])
+    jobs: list[dict[str, Any]] = []
+    tick_time = start_at
+    while tick_time < end_at and tick_time <= now:
+        job_key = tick_time.isoformat(timespec="seconds")
+        if job_key not in printed:
+            minutes_left = max(1, math.ceil((end_at - tick_time).total_seconds() / 60))
+            jobs.append({"job_key": job_key, "tick_time": tick_time, "minutes_left": minutes_left})
+        tick_time += dt.timedelta(minutes=1)
+    return jobs
+
+
+def _print_timer_tick(timer: dict[str, Any], job: dict[str, Any], config: dict[str, Any]) -> None:
+    profile = _get_profile(config.get("active_profile_key"))
+    preset = _get_preset(profile, timer.get("preset_key"))
+    label = str(timer.get("text_template") or COUNTDOWN_TEMPLATE).replace("{{minutes_left}}", str(job["minutes_left"]))
+    bitmap = _build_text_sticker(label, int(preset["px_w"]), int(preset["px_h"]))
+    timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    image_path = LOG_DIR / f"countdown_{timestamp}_{preset['key']}.png"
+    bitmap.save(image_path, dpi=(profile["dpi"], profile["dpi"]))
+    _print_via_raster(bitmap, profile, str(preset["media"]))
+    _record_print_history("countdown", label, preset, image_path, {"minutes_left": job["minutes_left"]})
+
+
+def _print_timer_end_history(timer: dict[str, Any], config: dict[str, Any]) -> None:
+    selected = timer.get("selected_history_ids") or []
+    if not selected:
+        return
+    history_map = _history_map()
+    profile = _get_profile(config.get("active_profile_key"))
+    for history_id in selected:
+        entry = history_map.get(str(history_id))
+        if not entry:
+            continue
+        _print_history_item(entry, profile)
+
+
+def _run_countdown_timer_tick(config: dict[str, Any], now: dt.datetime) -> bool:
+    timer = config.get("countdown_timer")
+    if not isinstance(timer, dict):
+        return False
+    if timer.get("status") not in {"armed", "running"}:
+        return False
+    start_at = _parse_dt(timer.get("start_at") or "")
+    end_at = _parse_dt(timer.get("end_at") or "")
+    if not start_at or not end_at or end_at <= start_at:
+        timer["status"] = "completed"
+        timer["completed_at"] = _iso(now)
+        return True
+    changed = False
+    if now >= start_at and timer.get("status") == "armed":
+        timer["status"] = "running"
+        timer["started_at"] = _iso(now)
+        changed = True
+    for job in _timer_tick_jobs(timer, now):
+        _print_timer_tick(timer, job, config)
+        printed = set(timer.get("printed_tick_keys") or [])
+        printed.add(job["job_key"])
+        timer["printed_tick_keys"] = sorted(printed)
+        changed = True
+    if now >= end_at and not timer.get("end_printed_at"):
+        _print_timer_end_history(timer, config)
+        timer["end_printed_at"] = _iso(now)
+        timer["completed_at"] = _iso(now)
+        timer["status"] = "completed"
+        changed = True
+    return changed
+
+
 def _figma_token(config: dict[str, Any]) -> str:
     token_env = str(config.get("figma", {}).get("token_env") or DEFAULT_FIGMA_TOKEN_ENV).strip() or DEFAULT_FIGMA_TOKEN_ENV
     return (os.environ.get(token_env) or "").strip()
@@ -950,6 +1111,32 @@ def _print_scheduled_job(plan: dict[str, Any], item: dict[str, Any], job: dict[s
     _append_history(history)
 
 
+def _record_print_history(kind: str, label: str, preset: dict[str, Any], image_path: pathlib.Path, extra: dict[str, Any] | None = None) -> dict[str, Any]:
+    history = {
+        "history_id": image_path.name,
+        "timestamp": _iso(_now_local()),
+        "kind": kind,
+        "label": label,
+        "preset_key": preset["key"],
+        "preset_label": preset["label"],
+        "image_url": f"{PUBLIC_BASE_URL}{_public_path(f'/logs/{image_path.name}')}" if PUBLIC_BASE_URL else _public_path(f"/logs/{image_path.name}"),
+        "image_path": str(image_path),
+    }
+    if extra:
+        history.update(extra)
+    _append_history(history)
+    return history
+
+
+def _print_history_item(history_entry: dict[str, Any], profile: dict[str, Any]) -> None:
+    image_path = pathlib.Path(str(history_entry.get("image_path") or ""))
+    if not image_path.exists():
+        raise RuntimeError(f"History image is missing: {image_path.name}")
+    with Image.open(image_path) as opened:
+        img = opened.copy()
+    _print_via_raster(img, profile, str(_get_preset(profile, history_entry.get("preset_key")).get("media") or ""))
+
+
 def _mark_job_complete(plan: dict[str, Any], item: dict[str, Any], job: dict[str, Any]) -> None:
     stamp = _iso(_now_local())
     if item.get("kind") == "frame":
@@ -968,13 +1155,16 @@ def _mark_job_complete(plan: dict[str, Any], item: dict[str, Any], job: dict[str
 def _run_scheduler_tick() -> None:
     with CONFIG_LOCK:
         config = _deepcopy(CONFIG)
+    now = _now_local()
+    if _run_countdown_timer_tick(config, now):
+        with CONFIG_LOCK:
+            _save_config(config)
     active_plan_id = str(config.get("active_plan_id") or "").strip()
     if not active_plan_id:
         return
     plan = next((entry for entry in config.get("plans", []) if entry.get("id") == active_plan_id), None)
     if not plan:
         return
-    now = _now_local()
     changed = False
     if plan["mode"] == "relative" and plan.get("status") == "armed" and not plan.get("started_at"):
         scheduled_start = _parse_dt(plan.get("start_at") or "")
@@ -1087,7 +1277,8 @@ def _dashboard_state() -> dict[str, Any]:
     return {
         "active_plan": _plan_summary(active_plan) if active_plan else None,
         "paper_presets": list(profile.get("preset_map", {}).values()),
-        "recent_jobs": _recent_history(10),
+        "recent_jobs": _recent_history(16),
+        "countdown_timer": _timer_summary(config.get("countdown_timer") or _default_timer_state()),
         "figma": {
             "file_key": config.get("figma", {}).get("file_key", ""),
             "last_sync_at": config.get("figma", {}).get("last_sync_at", ""),
@@ -1133,7 +1324,13 @@ def _boot() -> None:
 
 @route_with_base("/", methods=["GET"])
 def index():
-    return render_template("index.html", state=_dashboard_state(), asset_ver=ASSET_VERSION, base_path=BASE_PATH)
+    return render_template(
+        "index.html",
+        state=_dashboard_state(),
+        asset_ver=ASSET_VERSION,
+        base_path=BASE_PATH,
+        default_threshold=DEFAULT_IMAGE_THRESHOLD,
+    )
 
 
 @route_with_base("/health", methods=["GET"])
@@ -1143,6 +1340,89 @@ def health():
 
 @route_with_base("/api/state", methods=["GET"])
 def api_state():
+    return jsonify(ok=True, state=_dashboard_state())
+
+
+@route_with_base("/api/history", methods=["GET"])
+def api_history():
+    return jsonify(ok=True, history=_recent_history(24))
+
+
+@route_with_base("/print-text", methods=["POST"])
+def print_text():
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text") or "").strip()
+    if not text:
+        return jsonify(ok=False, msg="Enter text to print."), 400
+    profile = _get_profile(data.get("profile_key"))
+    preset = _get_preset(profile, data.get("preset_key"))
+    bitmap = _build_text_sticker(text, int(preset["px_w"]), int(preset["px_h"]))
+    timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+    image_path = LOG_DIR / f"text_{timestamp}_{preset['key']}.png"
+    bitmap.save(image_path, dpi=(profile["dpi"], profile["dpi"]))
+    try:
+        _print_via_raster(bitmap, profile, str(preset["media"]))
+    except Exception as exc:
+        return jsonify(ok=False, msg=str(exc)), 500
+    history = _record_print_history("text", text, preset, image_path)
+    return jsonify(ok=True, msg=f"Printed {preset['label']}.", history=history)
+
+
+@route_with_base("/print-image", methods=["POST"])
+def print_image():
+    uploaded = request.files.get("image")
+    if not uploaded:
+        return jsonify(ok=False, msg="Choose an image first."), 400
+    profile = _get_profile(request.form.get("profile_key"))
+    preset = _get_preset(profile, request.form.get("preset_key"))
+    try:
+        threshold = max(1, min(255, int(request.form.get("threshold") or DEFAULT_IMAGE_THRESHOLD)))
+    except Exception:
+        threshold = DEFAULT_IMAGE_THRESHOLD
+    try:
+        src = Image.open(uploaded.stream)
+        fitted = _fit_image_to_label(_flatten_to_white(src), int(preset["px_w"]), int(preset["px_h"]))
+        bitmap = _to_print_bitmap(fitted, threshold)
+        timestamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        image_path = LOG_DIR / f"image_{timestamp}_{preset['key']}.png"
+        bitmap.save(image_path, dpi=(profile["dpi"], profile["dpi"]))
+        _print_via_raster(bitmap, profile, str(preset["media"]))
+    except Exception as exc:
+        return jsonify(ok=False, msg=str(exc)), 500
+    history = _record_print_history("image", "Image sticker", preset, image_path, {"threshold": threshold})
+    return jsonify(ok=True, msg=f"Printed {preset['label']}.", history=history)
+
+
+@route_with_base("/api/timer/start", methods=["POST"])
+def api_timer_start():
+    data = request.get_json(silent=True) or {}
+    start_at = _parse_dt(str(data.get("start_at") or ""))
+    end_at = _parse_dt(str(data.get("end_at") or ""))
+    if not start_at or not end_at:
+        return jsonify(ok=False, msg="Choose both a start and end time."), 400
+    if end_at <= start_at:
+        return jsonify(ok=False, msg="End time must be after start time."), 400
+    with CONFIG_LOCK:
+        config = _deepcopy(CONFIG)
+        timer = _default_timer_state()
+        timer["status"] = "armed"
+        timer["start_at"] = _iso(start_at)
+        timer["end_at"] = _iso(end_at)
+        timer["preset_key"] = str(data.get("preset_key") or DEFAULT_ORANGE_PRESET_KEY).strip() or DEFAULT_ORANGE_PRESET_KEY
+        timer["text_template"] = str(data.get("text_template") or COUNTDOWN_TEMPLATE).strip() or COUNTDOWN_TEMPLATE
+        selected = data.get("selected_history_ids")
+        timer["selected_history_ids"] = [str(item).strip() for item in selected] if isinstance(selected, list) else []
+        config["countdown_timer"] = timer
+        _save_config(config)
+    return jsonify(ok=True, state=_dashboard_state())
+
+
+@route_with_base("/api/timer/cancel", methods=["POST"])
+def api_timer_cancel():
+    with CONFIG_LOCK:
+        config = _deepcopy(CONFIG)
+        config["countdown_timer"] = _default_timer_state()
+        _save_config(config)
     return jsonify(ok=True, state=_dashboard_state())
 
 

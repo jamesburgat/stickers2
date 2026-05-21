@@ -2,48 +2,124 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>Presentation Sticker Scheduler</title>
+  <title>Sticker Countdown Printer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}?v={{ asset_ver }}">
+  <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
 </head>
-<body class="dashboard-page">
-  <main class="shell">
-    <header class="hero">
+<body class="operator-page">
+  <main class="operator-shell">
+    <header class="operator-head">
       <div>
-        <p class="eyebrow">Timed Sticker Control</p>
-        <h1>Presentation Sticker Scheduler</h1>
-        <p class="lede">Square transfer stickers, Figma-frame imports, and minute-by-minute countdown prints.</p>
+        <h1>Sticker Countdown Printer</h1>
+        <p class="operator-sub">Make stickers like `stickers.jamesburgat.com`, then run a simple minute-by-minute countdown and finish with saved stickers from history.</p>
       </div>
-      <a class="ghost-btn" href="{{ url_for('admin_page') }}">Admin</a>
+      <a class="operator-admin-link" href="{{ url_for('admin_page') }}">Admin</a>
     </header>
 
-    <section class="dashboard-grid">
-      <article class="card accent" id="activePlanCard">
-        <div class="section-label">Active Plan</div>
-        <div id="activePlanContent"></div>
+    <section class="operator-topbar panel-card">
+      <label class="operator-field">
+        <span>Sticker size</span>
+        <select id="presetSelect">
+          {% for preset in state.paper_presets %}
+            <option value="{{ preset.key }}">{{ preset.label }}</option>
+          {% endfor %}
+        </select>
+      </label>
+      <div class="operator-active" id="timerSummary"></div>
+    </section>
+
+    <section class="operator-grid">
+      <article class="panel-card">
+        <div class="section-label">Text</div>
+        <label class="operator-field">
+          <span>Sticker text</span>
+          <input id="textInput" type="text" placeholder="Enter text...">
+        </label>
+        <button id="printTextBtn" type="button">PRINT TEXT</button>
+        <div id="textStatus" class="inline-status"></div>
       </article>
 
-      <article class="card">
-        <div class="section-label">Paper Presets</div>
-        <div id="paperPresetContent"></div>
+      <article class="panel-card">
+        <div class="section-label">Image</div>
+        <label class="operator-field">
+          <span>Choose image</span>
+          <input id="imageInput" type="file" accept="image/*">
+        </label>
+        <button id="cropBtn" type="button">FORMAT &amp; PRINT IMAGE</button>
+        <div id="imageStatus" class="inline-status"></div>
       </article>
 
-      <article class="card">
-        <div class="section-label">Figma Source</div>
-        <div id="figmaContent"></div>
+      <article class="panel-card timer-card">
+        <div class="section-label">Timer</div>
+        <div class="timer-copy">Pick an exact start and end time. The printer will output one countdown sticker every minute, then print any checked history stickers at the end.</div>
+        <div class="operator-two-col">
+          <label class="operator-field">
+            <span>Start time</span>
+            <input id="startAtInput" type="datetime-local">
+          </label>
+          <label class="operator-field">
+            <span>End time</span>
+            <input id="endAtInput" type="datetime-local">
+          </label>
+        </div>
+        <label class="operator-field">
+          <span>Countdown text</span>
+          <input id="timerTemplateInput" type="text" value="{{ '{{minutes_left}} Mins left' }}">
+        </label>
+        <div class="button-row">
+          <button id="startTimerBtn" type="button">START TIMER</button>
+          <button id="cancelTimerBtn" class="ghost-btn" type="button">CANCEL TIMER</button>
+        </div>
+        <div id="timerStatus" class="inline-status"></div>
       </article>
 
-      <article class="card span-2">
-        <div class="section-label">Recent Prints</div>
-        <div id="recentPrintsContent"></div>
+      <article class="panel-card history-panel">
+        <div class="section-label">History</div>
+        <div class="history-copy">Check the stickers you want printed when the timer ends.</div>
+        <div id="historyGrid" class="history-grid"></div>
       </article>
     </section>
   </main>
 
+  <div class="modal" id="modal" aria-hidden="true" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-head">
+        <div>Crop &amp; Preview</div>
+        <div class="zoom-tools">
+          <button id="zoomOut" type="button" aria-label="Zoom out">-</button>
+          <button id="zoomIn" type="button" aria-label="Zoom in">+</button>
+          <button id="rotateImage" type="button" aria-label="Rotate image 90 degrees">Rotate</button>
+          <button id="resetCrop" type="button">Reset</button>
+          <button id="closeModal" type="button">x</button>
+        </div>
+      </div>
+      <div class="modal-body">
+        <div class="crop-wrap">
+          <img id="cropImage" alt="to crop">
+        </div>
+        <div class="controls">
+          <label class="operator-field small-gap">
+            <span>Threshold: <span id="thVal">{{ default_threshold }}</span></span>
+            <input id="threshold" type="range" min="0" max="255" value="{{ default_threshold }}">
+          </label>
+          <div class="preview">
+            <canvas id="previewCanvas" width="1" height="1"></canvas>
+          </div>
+          <div class="tools">
+            <button id="printImageBtn" type="button">PRINT IMAGE</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <script>
-    window.__DASHBOARD_STATE__ = {{ state|tojson }};
+    window.__APP_STATE__ = {{ state|tojson }};
     window.__BASE_PATH__ = {{ base_path|tojson }};
+    window.__DEFAULT_THRESHOLD__ = {{ default_threshold|default(160) }};
   </script>
-  <script src="{{ url_for('static', filename='dashboard.js') }}?v={{ asset_ver }}"></script>
+  <script src="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.js"></script>
+  <script src="{{ url_for('static', filename='main.js') }}?v={{ asset_ver }}"></script>
 </body>
 </html>
