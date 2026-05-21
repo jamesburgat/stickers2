@@ -1,4 +1,4 @@
-# Deploying Over `stickers2.jamesburgat.com/tool`
+# Deploying To The Pi Live Slot
 
 This app is now designed to run behind the existing `/tool` URL.
 
@@ -22,18 +22,18 @@ FIGMA_TOKEN=...
 
 If you want public log URLs to include the full path, keep `PUBLIC_BASE_URL` as the origin only. The app will append `/tool/...` automatically.
 
-## Server layout
+## Actual Pi target
 
-Suggested install directory:
+Current live app directory:
 
 ```bash
-/opt/stickers2
+/opt/receipt-printer
 ```
 
-Systemd unit template:
+Current live service:
 
 ```bash
-ops/stickerapp.service
+receipt-printer.service
 ```
 
 GitHub Actions workflow:
@@ -42,37 +42,41 @@ GitHub Actions workflow:
 .github/workflows/deploy.yml
 ```
 
-## Reverse proxy
-
-Your live URL already uses `/tool`, so your web server should proxy that prefix to gunicorn without stripping it:
-
-```nginx
-location /tool/ {
-    proxy_pass http://127.0.0.1:8000/tool/;
-    proxy_set_header Host $host;
-    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-    proxy_set_header X-Forwarded-Proto $scheme;
-}
-
-location = /tool {
-    return 301 /tool/;
-}
-```
-
 ## Replace flow
 
-1. Copy this repo to `/opt/stickers2`.
-2. Create `/opt/stickers2/.env` with the values above.
-3. Install the service file as `stickers2.service`.
-4. Update nginx so `/tool` points to this app instead of the current receipt-printer service.
-5. Restart nginx and `stickers2.service`.
-6. Verify:
+The easiest deployment path is to overwrite the existing receipt-printer app in place.
+
+1. Keep the existing `receipt-printer.service`.
+2. Keep the existing host/proxy setup.
+3. Have GitHub Actions sync this repo into `/opt/receipt-printer`.
+4. Restart `receipt-printer.service`.
+5. Verify:
 
 ```bash
 curl -fsS http://127.0.0.1:8000/tool/health
 curl -I https://stickers2.jamesburgat.com/tool/
 ```
 
+## One-time Pi prep
+
+Edit `/opt/receipt-printer/.env` so it contains:
+
+```env
+BASE_PATH=/tool
+PUBLIC_BASE_URL=https://stickers2.jamesburgat.com
+ADMIN_PASSWORD=...
+SECRET_KEY=...
+PRINTER_TRANSFER_RASTER=Zebra_Transfer_300
+TRANSFER_DPI=300
+FIGMA_TOKEN=...
+```
+
+Existing extra receipt-printer env vars can stay; this app will ignore what it does not use.
+
 ## Important
 
-The current live `/tool` is not your old `stickers` app. It appears to be a different receipt-printer app, so you likely need to disable or replace that service and its nginx location rather than touching `/opt/sticker-app`.
+The workflow now targets the actual live slot on the Pi:
+
+- app dir: `/opt/receipt-printer`
+- service: `receipt-printer.service`
+- live route: `/tool`

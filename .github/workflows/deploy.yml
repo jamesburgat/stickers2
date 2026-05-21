@@ -1,4 +1,4 @@
-name: Deploy stickers2 (self-hosted)
+name: Deploy stickers2 to Pi
 
 on:
   push:
@@ -9,7 +9,7 @@ jobs:
     runs-on: [self-hosted, linux]
 
     env:
-      APP_DIR: /opt/stickers2
+      APP_DIR: /opt/receipt-printer
 
     steps:
       - name: Check out code
@@ -19,8 +19,8 @@ jobs:
 
       - name: Ensure persistent dirs
         run: |
-          sudo mkdir -p "$APP_DIR/logs" "$APP_DIR/cache/figma"
-          sudo chown -R jamesburgat:lp "$APP_DIR/logs" "$APP_DIR/cache"
+          sudo mkdir -p "$APP_DIR/logs" "$APP_DIR/cache/figma" "$APP_DIR/figma_cache"
+          sudo chown -R jamesburgat:lp "$APP_DIR"
 
       - name: Sync repo into app dir
         run: |
@@ -31,6 +31,7 @@ jobs:
             --exclude '.venv/' \
             --exclude 'logs/' \
             --exclude 'cache/figma/*.png' \
+            --exclude 'figma_cache/' \
             ./ "$APP_DIR/"
 
       - name: Ensure venv and deps
@@ -41,17 +42,17 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Install service file
+      - name: Ensure required runtime env
         run: |
-          sudo cp "$APP_DIR/ops/stickerapp.service" /etc/systemd/system/stickers2.service
-          sudo systemctl daemon-reload
-          sudo systemctl enable stickers2.service
+          test -f "$APP_DIR/.env"
+          grep -q '^BASE_PATH=/tool$' "$APP_DIR/.env" || echo "BASE_PATH=/tool is missing in $APP_DIR/.env" >&2
+          grep -q '^PUBLIC_BASE_URL=https://stickers2.jamesburgat.com$' "$APP_DIR/.env" || echo "PUBLIC_BASE_URL=https://stickers2.jamesburgat.com is missing in $APP_DIR/.env" >&2
 
       - name: Restart service
         run: |
-          sudo systemctl restart stickers2.service
+          sudo systemctl restart receipt-printer.service
           sleep 2
-          sudo systemctl --no-pager -l status stickers2.service || true
+          sudo systemctl --no-pager -l status receipt-printer.service || true
 
       - name: Smoke test
         run: |
