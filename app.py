@@ -16,7 +16,7 @@ import urllib.request
 import uuid
 from typing import Any
 
-from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, session
+from flask import Flask, jsonify, redirect, render_template, request, send_from_directory, session, url_for
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 try:
