@@ -8,77 +8,63 @@
   <link rel="stylesheet" href="https://unpkg.com/cropperjs@1.6.2/dist/cropper.min.css">
 </head>
 <body class="operator-page">
-  <main class="operator-shell">
-    <header class="operator-head">
-      <div>
-        <h1>Sticker Countdown Printer</h1>
-        <p class="operator-sub">Make stickers like `stickers.jamesburgat.com`, then run a simple minute-by-minute countdown and finish with saved stickers from history.</p>
+  <main class="wrap operator-wrap">
+    <div class="head operator-head">
+      <h1>Sticker Countdown Printer</h1>
+      <div class="operator-head-row">
+        <p class="operator-sub">Use the normal text or image flow, then set one timer to print a countdown every minute and finish with saved history stickers.</p>
+        <a class="operator-admin-link" href="{{ url_for('admin_page') }}">Admin</a>
       </div>
-      <a class="operator-admin-link" href="{{ url_for('admin_page') }}">Admin</a>
-    </header>
+    </div>
 
-    <section class="operator-topbar panel-card">
-      <label class="operator-field">
-        <span>Sticker size</span>
-        <select id="presetSelect">
-          {% for preset in state.paper_presets %}
-            <option value="{{ preset.key }}">{{ preset.label }}</option>
-          {% endfor %}
-        </select>
-      </label>
-      <div class="operator-active" id="timerSummary"></div>
-    </section>
+    <section class="panel operator-panel">
+      <label class="lbl big">Sticker Size</label>
+      <select id="presetSelect">
+        {% for preset in state.paper_presets %}
+          <option value="{{ preset.key }}">{{ preset.label }}</option>
+        {% endfor %}
+      </select>
+      <div class="operator-active muted" id="timerSummary"></div>
 
-    <section class="operator-grid">
-      <article class="panel-card">
-        <div class="section-label">Text</div>
-        <label class="operator-field">
-          <span>Sticker text</span>
-          <input id="textInput" type="text" placeholder="Enter text...">
-        </label>
-        <button id="printTextBtn" type="button">PRINT TEXT</button>
-        <div id="textStatus" class="inline-status"></div>
-      </article>
+      <label class="lbl big">Text</label>
+      <input id="textInput" type="text" placeholder="Enter text...">
+      <button id="printTextBtn" type="button">PRINT TEXT</button>
+      <div id="textStatus" class="status"></div>
 
-      <article class="panel-card">
-        <div class="section-label">Image</div>
-        <label class="operator-field">
-          <span>Choose image</span>
-          <input id="imageInput" type="file" accept="image/*">
-        </label>
-        <button id="cropBtn" type="button">FORMAT &amp; PRINT IMAGE</button>
-        <div id="imageStatus" class="inline-status"></div>
-      </article>
+      <div class="or">or</div>
 
-      <article class="panel-card timer-card">
-        <div class="section-label">Timer</div>
-        <div class="timer-copy">Pick an exact start and end time. The printer will output one countdown sticker every minute, then print any checked history stickers at the end.</div>
-        <div class="operator-two-col">
-          <label class="operator-field">
-            <span>Start time</span>
+      <label class="lbl big">Image</label>
+      <input id="imageInput" type="file" accept="image/*">
+      <button id="cropBtn" type="button">FORMAT &amp; PRINT IMAGE</button>
+      <div id="imageStatus" class="status"></div>
+
+      <div class="timer-block">
+        <label class="lbl big">Timer</label>
+        <div class="muted timer-copy">Set a start and end time. The printer will print one countdown sticker every minute. When time is up, it will print the checked history stickers.</div>
+        <div class="row two timer-fields">
+          <div>
+            <label class="lbl small" for="startAtInput">Start time</label>
             <input id="startAtInput" type="datetime-local">
-          </label>
-          <label class="operator-field">
-            <span>End time</span>
+          </div>
+          <div>
+            <label class="lbl small" for="endAtInput">End time</label>
             <input id="endAtInput" type="datetime-local">
-          </label>
+          </div>
         </div>
-        <label class="operator-field">
-          <span>Countdown text</span>
-          <input id="timerTemplateInput" type="text" value="{{ '{{minutes_left}} Mins left' }}">
-        </label>
-        <div class="button-row">
+        <label class="lbl small" for="timerTemplateInput">Countdown text</label>
+        <input id="timerTemplateInput" type="text" value="{{ '{{minutes_left}} Mins left' }}">
+        <div class="timer-actions">
           <button id="startTimerBtn" type="button">START TIMER</button>
           <button id="cancelTimerBtn" class="ghost-btn" type="button">CANCEL TIMER</button>
         </div>
-        <div id="timerStatus" class="inline-status"></div>
-      </article>
+        <div id="timerStatus" class="status"></div>
+      </div>
 
-      <article class="panel-card history-panel">
-        <div class="section-label">History</div>
-        <div class="history-copy">Check the stickers you want printed when the timer ends.</div>
+      <div class="history-block">
+        <label class="lbl big">History</label>
+        <div class="muted history-copy">Check the stickers you want printed when the timer ends.</div>
         <div id="historyGrid" class="history-grid"></div>
-      </article>
+      </div>
     </section>
   </main>
 
