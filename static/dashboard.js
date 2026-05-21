@@ -1,5 +1,6 @@
 (() => {
   const state = window.__DASHBOARD_STATE__ || {};
+  const BASE_PATH = String(window.__BASE_PATH__ || "").replace(/\/$/, "");
   const activePlanEl = document.getElementById("activePlanContent");
   const paperEl = document.getElementById("paperPresetContent");
   const figmaEl = document.getElementById("figmaContent");
@@ -94,7 +95,7 @@
 
   async function poll() {
     try {
-      const response = await fetch("/api/state", { headers: { "Accept": "application/json" } });
+      const response = await fetch(appUrl("/api/state"), { headers: { "Accept": "application/json" } });
       if (!response.ok) return;
       const payload = await response.json();
       if (payload?.ok && payload.state) render(payload.state);
@@ -106,3 +107,7 @@
   render(state);
   window.setInterval(poll, 5000);
 })();
+  function appUrl(path) {
+    const normalized = `/${String(path || "").replace(/^\/+/, "")}`;
+    return `${BASE_PATH}${normalized}`;
+  }

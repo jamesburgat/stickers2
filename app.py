@@ -1133,7 +1133,7 @@ def _boot() -> None:
 
 @route_with_base("/", methods=["GET"])
 def index():
-    return render_template("index.html", state=_dashboard_state(), asset_ver=ASSET_VERSION)
+    return render_template("index.html", state=_dashboard_state(), asset_ver=ASSET_VERSION, base_path=BASE_PATH)
 
 
 @route_with_base("/health", methods=["GET"])
@@ -1154,8 +1154,8 @@ def serve_log_file(fname: str):
 @route_with_base("/admin", methods=["GET"])
 def admin_page():
     if not ADMIN_ENABLED or not _is_admin_authed():
-        return render_template("admin.html", authed=False, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION)
-    return render_template("admin.html", authed=True, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION)
+        return render_template("admin.html", authed=False, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION, base_path=BASE_PATH)
+    return render_template("admin.html", authed=True, admin_enabled=ADMIN_ENABLED, state=_admin_state(), asset_ver=ASSET_VERSION, base_path=BASE_PATH)
 
 
 @route_with_base("/admin/login", methods=["POST"])

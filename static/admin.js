@@ -2,6 +2,7 @@
   if (!window.__ADMIN_AUTHED__) return;
 
   let adminState = window.__ADMIN_STATE__ || {};
+  const BASE_PATH = String(window.__BASE_PATH__ || "").replace(/\/$/, "");
   let selectedPlanId = adminState.active_plan_id || adminState.plans?.[0]?.id || "";
   let editingItemId = "";
 
@@ -345,7 +346,7 @@
         const planRef = currentPlan();
         if (!planRef) return;
         try {
-          const payload = await postJson(`/api/admin/plans/${encodeURIComponent(planRef.id)}/print-now/${encodeURIComponent(button.dataset.printItem || "")}`);
+          const payload = await postJson(appUrl(`/api/admin/plans/${encodeURIComponent(planRef.id)}/print-now/${encodeURIComponent(button.dataset.printItem || "")}`));
           setState(payload.state);
           showMessage(els.planMessage, "Manual print sent.");
         } catch (error) {
@@ -451,7 +452,7 @@
   async function saveCurrentPlan() {
     const plan = collectPlanMeta();
     try {
-      const payload = await postJson("/api/admin/plans/save", { plan });
+      const payload = await postJson(appUrl("/api/admin/plans/save"), { plan });
       setState(payload.state);
       showMessage(els.planMessage, "Plan saved.");
     } catch (error) {
@@ -463,7 +464,7 @@
     const plan = currentPlan();
     if (!plan) return;
     try {
-      const payload = await postJson(`/api/admin/plans/${encodeURIComponent(plan.id)}/${encodeURIComponent(action)}`);
+      const payload = await postJson(appUrl(`/api/admin/plans/${encodeURIComponent(plan.id)}/${encodeURIComponent(action)}`));
       setState(payload.state);
       showMessage(els.planMessage, `Plan ${action} complete.`);
     } catch (error) {
@@ -473,7 +474,7 @@
 
   els.saveSettingsBtn.addEventListener("click", async () => {
     try {
-      const payload = await postJson("/api/admin/settings", {
+      const payload = await postJson(appUrl("/api/admin/settings"), {
         queue: els.queueInput.value.trim(),
         dpi: Number(els.dpiInput.value || 300),
         active_paper_key: els.activePaperSelect.value,
@@ -490,7 +491,7 @@
 
   els.refreshFramesBtn.addEventListener("click", async () => {
     try {
-      const payload = await postJson("/api/admin/figma/refresh");
+      const payload = await postJson(appUrl("/api/admin/figma/refresh"));
       setState(payload.state);
       showMessage(els.settingsMessage, `Loaded ${payload.frames?.length || 0} Figma frames.`);
     } catch (error) {
@@ -531,7 +532,7 @@
     if (!plan) return;
     if (!window.confirm(`Delete "${plan.name}"?`)) return;
     try {
-      const payload = await postJson(`/api/admin/plans/${encodeURIComponent(plan.id)}/delete`);
+      const payload = await postJson(appUrl(`/api/admin/plans/${encodeURIComponent(plan.id)}/delete`));
       setState(payload.state);
       showMessage(els.planMessage, "Plan deleted.");
     } catch (error) {
@@ -541,3 +542,7 @@
 
   renderAll();
 })();
+  function appUrl(path) {
+    const normalized = `/${String(path || "").replace(/^\/+/, "")}`;
+    return `${BASE_PATH}${normalized}`;
+  }

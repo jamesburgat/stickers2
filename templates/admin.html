@@ -240,6 +240,7 @@
   <script>
     window.__ADMIN_STATE__ = {{ state|tojson }};
     window.__ADMIN_AUTHED__ = {{ authed|tojson }};
+    window.__BASE_PATH__ = {{ base_path|tojson }};
   </script>
   {% if authed %}
     <script src="{{ url_for('static', filename='admin.js') }}?v={{ asset_ver }}"></script>

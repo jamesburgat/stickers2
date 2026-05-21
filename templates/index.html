@@ -42,6 +42,7 @@
 
   <script>
     window.__DASHBOARD_STATE__ = {{ state|tojson }};
+    window.__BASE_PATH__ = {{ base_path|tojson }};
   </script>
   <script src="{{ url_for('static', filename='dashboard.js') }}?v={{ asset_ver }}"></script>
 </body>
