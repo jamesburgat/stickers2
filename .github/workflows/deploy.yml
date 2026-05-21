@@ -1,0 +1,59 @@
+name: Deploy stickers2 to Pi
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, linux]
+
+    env:
+      APP_DIR: /opt/receipt-printer
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Ensure persistent dirs
+        run: |
+          sudo mkdir -p "$APP_DIR/logs" "$APP_DIR/cache/figma" "$APP_DIR/figma_cache"
+          sudo chown -R jamesburgat:lp "$APP_DIR"
+
+      - name: Sync repo into app dir
+        run: |
+          rsync -az --delete \
+            --exclude '.env' \
+            --exclude '.git' \
+            --exclude '.github' \
+            --exclude '.venv/' \
+            --exclude 'logs/' \
+            --exclude 'cache/figma/*.png' \
+            --exclude 'figma_cache/' \
+            ./ "$APP_DIR/"
+
+      - name: Ensure venv and deps
+        run: |
+          cd "$APP_DIR"
+          test -d .venv || python3 -m venv .venv
+          . .venv/bin/activate
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Ensure required runtime env
+        run: |
+          test -f "$APP_DIR/.env"
+          grep -q '^BASE_PATH=/tool$' "$APP_DIR/.env" || echo "BASE_PATH=/tool is missing in $APP_DIR/.env" >&2
+          grep -q '^PUBLIC_BASE_URL=https://stickers2.jamesburgat.com$' "$APP_DIR/.env" || echo "PUBLIC_BASE_URL=https://stickers2.jamesburgat.com is missing in $APP_DIR/.env" >&2
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart receipt-printer.service
+          sleep 2
+          sudo systemctl --no-pager -l status receipt-printer.service || true
+
+      - name: Smoke test
+        run: |
+          curl -fsS http://127.0.0.1:8000/tool/health
