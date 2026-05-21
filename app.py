@@ -420,13 +420,16 @@ def _load_config() -> dict[str, Any]:
 def _build_preset_runtime(preset: dict[str, Any], dpi: int) -> dict[str, Any]:
     width_in = float(preset["width_in"])
     height_in = float(preset["height_in"])
-    media = str(preset.get("media") or "").strip() or _media_for_inches(width_in, height_in)
+    explicit_media = str(preset.get("media") or "").strip()
     return {
         **preset,
         "label": _label_for_preset(preset),
         "px_w": int(round(width_in * dpi)),
         "px_h": int(round(height_in * dpi)),
-        "media": media,
+        # Leave media blank unless the preset explicitly sets one so CUPS can
+        # use the computed PageSize option for square labels.
+        "media": explicit_media,
+        "computed_media": _media_for_inches(width_in, height_in),
     }
 
 
